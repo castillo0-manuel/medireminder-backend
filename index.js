@@ -37,12 +37,29 @@ app.post('/chat', async (req, res) => {
     // Último mensaje del usuario
     const lastMessage = messages[messages.length - 1];
 
-    const body = {
-      system_instruction: system ? { parts: [{ text: system }] } : undefined,
-      contents: [
-        ...geminiHistory,
+    // v1 no soporta system_instruction, lo inyectamos en el primer mensaje
+    const systemPrefix = system
+      ? `[INSTRUCCIONES - Sigue estas reglas siempre]:\n${system}\n\n`
+      : '';
+
+    let contents;
+    if (geminiHistory.length === 0) {
+      // Primera vuelta: system + mensaje del usuario
+      contents = [
+        { role: 'user', parts: [{ text: systemPrefix + lastMessage.content }] },
+      ];
+    } else {
+      // Conversación en curso: system va al inicio del primer mensaje
+      const firstMsg = geminiHistory[0];
+      contents = [
+        { role: 'user', parts: [{ text: systemPrefix + firstMsg.parts[0].text }] },
+        ...geminiHistory.slice(1),
         { role: 'user', parts: [{ text: lastMessage.content }] },
-      ],
+      ];
+    }
+
+    const body = {
+      contents,
       generationConfig: {
         maxOutputTokens: 1024,
         temperature: 0.7,
