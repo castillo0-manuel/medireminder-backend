@@ -4,21 +4,18 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ── Middleware ───────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ── Health check ─────────────────────────────────────────────────
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'MediReminder Backend' });
+  res.json({ status: 'ok', service: 'MediReminder Backend v2' });
 });
 
-// ── Chat endpoint ─────────────────────────────────────────────────
 app.post('/chat', async (req, res) => {
   try {
     const { system, messages } = req.body;
 
-    if (!messages || !Array.isArray(messages)) {
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array is required' });
     }
 
@@ -27,75 +24,70 @@ app.post('/chat', async (req, res) => {
       return res.status(500).json({ error: 'GEMINI_API_KEY no configurada' });
     }
 
-    // Convertir historial al formato de Gemini
-    // Gemini usa 'user' y 'model' (no 'assistant')
-    const geminiHistory = messages.slice(0, -1).map(m => ({
+    const lastMessage = messages[messages.length - 1];
+    const prevMessages = messages.slice(0, -1);
+
+    const systemPrefix = system ? system + '\n\n---\n\n' : '';
+
+    const geminiHistory = prevMessages.map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
 
-    // Último mensaje del usuario
-    const lastMessage = messages[messages.length - 1];
-
-    // v1 no soporta system_instruction, lo inyectamos en el primer mensaje
-    const systemPrefix = system
-      ? `[INSTRUCCIONES - Sigue estas reglas siempre]:\n${system}\n\n`
-      : '';
-
     let contents;
     if (geminiHistory.length === 0) {
-      // Primera vuelta: system + mensaje del usuario
       contents = [
-        { role: 'user', parts: [{ text: systemPrefix + lastMessage.content }] },
+        { role: 'user', parts: [{ text: systemPrefix + lastMessage.content }] }
       ];
     } else {
-      // Conversación en curso: system va al inicio del primer mensaje
-      const firstMsg = geminiHistory[0];
+      const first = geminiHistory[0];
       contents = [
-        { role: 'user', parts: [{ text: systemPrefix + firstMsg.parts[0].text }] },
+        { role: 'user', parts: [{ text: systemPrefix + first.parts[0].text }] },
         ...geminiHistory.slice(1),
-        { role: 'user', parts: [{ text: lastMessage.content }] },
+        { role: 'user', parts: [{ text: lastMessage.content }] }
       ];
     }
 
-    const body = {
-      contents,
+    const body = JSON.stringify({
+      contents: contents,
       generationConfig: {
         maxOutputTokens: 1024,
-        temperature: 0.7,
-      },
-    };
+        temperature: 0.7
+      }
+    });
 
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+    const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=' + GEMINI_API_KEY;
 
     const geminiRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: body
     });
 
     const data = await geminiRes.json();
 
     if (!geminiRes.ok) {
-      console.error('Gemini error:', data);
-      return res.status(500).json({ error: data?.error?.message || 'Error de Gemini' });
+      console.error('Gemini error:', JSON.stringify(data));
+      return res.status(500).json({ error: data.error ? data.error.message : 'Error de Gemini' });
     }
 
-    // Extraer texto de la respuesta de Gemini
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
+    const text = data.candidates &&
+                 data.candidates[0] &&
+                 data.candidates[0].content &&
+                 data.candidates[0].content.parts &&
+                 data.candidates[0].content.parts[0] &&
+                 data.candidates[0].content.parts[0].text
+                 ? data.candidates[0].content.parts[0].text
+                 : 'Sin respuesta';
 
-    // Devolver en el mismo formato que espera ChatbotScreen
-    res.json({
-      content: [{ type: 'text', text }],
-    });
+    res.json({ content: [{ type: 'text', text: text }] });
 
   } catch (error) {
-    console.error('Backend error:', error);
-    res.status(500).json({ error: error.message || 'Error interno del servidor' });
+    console.error('Backend error:', error.message);
+    res.status(500).json({ error: error.message || 'Error interno' });
   }
 });
 
-// ── Start ─────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`✅ MediReminder Backend (Gemini) corriendo en puerto ${PORT}`);
+app.listen(PORT, function() {
+  console.log('MediReminder Backend v2 corriendo en puerto ' + PORT);
 });
