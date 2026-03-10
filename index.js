@@ -69,7 +69,7 @@ app.post('/chat', async (req, res) => {
       }
     });
 
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=' + GEMINI_API_KEY;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=' + GEMINI_API_KEY;
 
     const geminiRes = await fetch(url, {
       method: 'POST',
