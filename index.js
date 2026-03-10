@@ -11,6 +11,19 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'MediReminder Backend v2' });
 });
 
+// Endpoint temporal para ver modelos disponibles
+app.get('/models', async (req, res) => {
+  try {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + GEMINI_API_KEY);
+    const data = await r.json();
+    const names = (data.models || []).map(m => m.name);
+    res.json({ models: names });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/chat', async (req, res) => {
   try {
     const { system, messages } = req.body;
